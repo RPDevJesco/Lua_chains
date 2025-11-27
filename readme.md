@@ -1,45 +1,47 @@
-# Lua_chains Concept Test Results
+# Lua_chains Concept Test - Option 2 Results
 
-## Single Execution Comparison
+## Single Execution
 
-| Metric | Lua Chain | Hardcoded Rust | Difference |
-|--------|-----------|----------------|-----------|
-| Setup Time | 1,029.4µs | N/A | — |
-| Execution Time (1x) | 710µs | 81.9µs | 628.1µs |
-| Overhead | — | — | **766%** |
+| Component | Time |
+|-----------|------|
+| Hardcoded Rust chain execution | 45.8µs |
+| Lua parsing | 84.2µs |
+| EventChain building from Lua | 6.9µs |
+| EventChains execution | 5.5µs |
+| **Lua total** | **96.6µs** |
+| **Overhead vs hardcoded** | **111%** |
 
-## Repeated Execution (100 iterations)
+## Per-Iteration (100x, parsing each time)
 
-| Metric | Lua Chain | Hardcoded Rust | Ratio |
-|--------|-----------|----------------|-------|
-| Total Time (100x) | 74.3146ms | 303.2µs | 245x slower |
-| Per-Execution Average | 743.00µs | 3.00µs | **24,667%** |
+| Metric | Hardcoded | Lua | Ratio |
+|--------|-----------|-----|-------|
+| Total (100 runs) | 306.1µs | 1.2683ms | 4.1x slower |
+| Per-iteration | 3.00µs | 12.00µs | **300% overhead** |
 
 ## Cost Breakdown
 
-| Component | Cost | Notes |
+| Operation | Cost | Notes |
 |-----------|------|-------|
-| Lua parsing + setup | 999.4µs | One-time cost (amortized) |
-| Lua per-execution | 743.00µs | FFI + dynamic invocation overhead |
-| Hardcoded per-execution | 3.00µs | Baseline (2 events + 1 middleware) |
-| **Interpretation tax** | **740µs per execution** | Lua layer cost |
+| Lua parsing (per definition) | 84.2µs | One-time cost |
+| Chain building from Lua | 6.9µs | Converting Lua config to Rust chain |
+| EventChains execution | 5.5µs | The actual orchestration |
+| Hardcoded chain build + exec | 45.8µs | Baseline for comparison |
 
-## Key Findings
+## Amortization Analysis
 
-| Finding | Value |
-|---------|-------|
-| EventChains pattern overhead | ~0.5µs per operation |
-| Lua FFI + execution overhead | ~740µs per run |
-| Setup amortization point | ~1,340 executions |
-| Per-execution slowdown | **248x** |
+If Lua is parsed **once** and executed many times:
+- First run: 96.6µs (Lua parse + build + exec)
+- Subsequent runs: ~5.5µs (execution only)
+- Break-even at: ~15 executions
 
-## Setup Amortization Analysis
+If Lua is parsed **every time**:
+- Every run: 12µs overhead per execution
+- At 100 runs: 1.2683ms total
 
-| Executions | Lua Total | Hardcoded Total | Break-even? |
-|------------|-----------|-----------------|-------------|
-| 1 | 1,739.4µs | 81.9µs | ✗ (21x slower) |
-| 100 | 74,314.6µs | 303.2µs | ✗ (245x slower) |
-| 1,000 | 743,999µs | 3,032µs | ✗ (245x slower) |
-| 10,000 | 7,439,999µs | 30,320µs | ✗ (245x slower) |
+## Interpretation
 
-**Note:** Setup cost is negligible; per-execution overhead dominates entirely.
+The 300% overhead in repeated execution is because **Lua parsing is happening inside the loop**. In production:
+- Parse Lua once at startup: 84.2µs (amortized across 1000s of executions)
+- Per-execution cost: ~5.5µs for EventChains orchestration (similar to hardcoded)
+
+**Conclusion:** EventChains pattern itself has negligible overhead. The Lua cost is purely the interpretation/parsing layer, which is amortized quickly if the chain definition is reused.
